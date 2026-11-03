@@ -21,6 +21,48 @@ Commands print a readable summary by default. Add `--json` to a command when scr
 ./admin-splitter inspect --state ./source/admin.tfstate --json
 ```
 
+## Example: before and after
+
+This example splits 615 existing resources across five leaf spaces. Live changes happen during the manual cutover; `prepare` only creates local files.
+
+### Before: one admin owns everything
+
+```mermaid
+flowchart LR
+    admin["Admin stack<br/>One state: 615 resources"]
+    shared["5 shared contexts"]
+    leaves["5 leaf space modules: 610 resources<br/>Spaces, stacks, environment variables,<br/>context attachments and mounted files"]
+
+    admin --> shared
+    admin --> leaves
+```
+
+A normal plan refreshes the whole admin state, even when an edit affects only one leaf space.
+
+### After: the original admin manages five child admins
+
+```mermaid
+flowchart LR
+    parent["Original admin stack<br/>Parent state: 31 resources<br/>5 shared contexts + 26 controller resources"]
+    a["Team A admin<br/>Own state: 122 resources<br/>_split/team_a/"]
+    b["Team B admin<br/>Own state: 122 resources<br/>_split/team_b/"]
+    c["Team C admin<br/>Own state: 122 resources<br/>_split/team_c/"]
+    d["Team D admin<br/>Own state: 122 resources<br/>_split/team_d/"]
+    e["Team E admin<br/>Own state: 122 resources<br/>_split/team_e/"]
+
+    parent -->|Conditional dependency| a
+    parent -->|Conditional dependency| b
+    parent -->|Conditional dependency| c
+    parent -->|Conditional dependency| d
+    parent -->|Conditional dependency| e
+```
+
+The original 615 resources keep their addresses and IDs, with exactly one state owner each. The parent adds 26 controller resources: five child stacks, their role and policy attachments, their dependencies and output references, and one shared push policy. The resulting states contain 641 resources in total. All admins use the original worker pool; a private pool stays private.
+
+After each child's manual bootstrap, a tracked parent apply publishes a separate payload for each child. That payload contains the child's inputs and a digest of its configuration. A changed payload triggers that child; unchanged children are skipped. Multiple affected children can run in parallel when worker capacity is available. Each child still requires manual approval when its plan has changes.
+
+For example, editing `_split/team_a/` changes only Team A's configuration digest. The parent applies that output change, Team A plans against its 122 resources, and Teams B–E are skipped. An edit to a shared input can trigger several children.
+
 ## Preview and safety checks
 
 There is no separate `--dry-run` flag. The preview workflow is `inspect` followed by `prepare`:
