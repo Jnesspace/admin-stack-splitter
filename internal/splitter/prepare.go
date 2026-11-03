@@ -14,7 +14,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/jnesspace/admin-stack-splitter/docs"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
@@ -42,6 +41,7 @@ type prepareResult struct {
 }
 type groupResult struct {
 	Name            string `json:"name"`
+	StackName       string `json:"stack_name,omitempty"`
 	Module          string `json:"module"`
 	Instances       int    `json:"instances"`
 	StateFile       string `json:"state_file"`
@@ -237,7 +237,7 @@ func prepare(config, statePath, layoutPath, out, tool string, validate bool) (*p
 		if err := detachModule(repo, g); err != nil {
 			return nil, err
 		}
-		report.Groups = append(report.Groups, groupResult{Name: g.Name, Module: g.Module, Instances: g.Count, StateFile: "private/states/" + file, ConfigDirectory: "repo/_split/" + g.Name})
+		report.Groups = append(report.Groups, groupResult{Name: g.Name, StackName: g.StackName, Module: g.Module, Instances: g.Count, StateFile: "private/states/" + file, ConfigDirectory: "repo/_split/" + g.Name})
 	}
 	parent, _, err := readState(filepath.Join(statesDir, "parent.tfstate"))
 	if err != nil {
@@ -285,10 +285,14 @@ func prepare(config, statePath, layoutPath, out, tool string, validate bool) (*p
 	}); err != nil {
 		return nil, err
 	}
-	if err := writePrivate(filepath.Join(dest, "CUTOVER.md"), []byte(docs.Cutover)); err != nil {
+	report.Complete = true
+	guide, err := renderCutover(dest, report)
+	if err != nil {
 		return nil, err
 	}
-	report.Complete = true
+	if err := writePrivate(filepath.Join(dest, "CUTOVER.md"), guide); err != nil {
+		return nil, err
+	}
 	if err := writeJSON(status, report); err != nil {
 		return nil, err
 	}

@@ -4,21 +4,25 @@ This is a source-only utility for splitting an existing migration-kit / liftoff 
 
 ## Layout
 
-- `cmd/admin-splitter/`: thin entry point; JSON error output and exit status.
+- `cmd/admin-splitter/`: thin entry point and exit status.
 - `internal/splitter/`: command handling, API reads, configuration rendering, state partitioning and plan checks. Tests live beside the implementation; generic fixtures live in `testdata/`.
-- `docs/`: customer instructions. `docs/cutover.md` is embedded and written into prepared output; keep one copy of that procedure.
+- `docs/`: customer instructions. `docs/cutover.md` is embedded after a generated section with the split's actual IDs, paths and mount table. Keep one canonical copy of the manual procedure.
 - `examples/`: generic layout and GraphQL examples.
 
 ## Behavior to preserve
 
+- Every `admin-splitter` command runs locally. Actual plans and applies run in Spacelift; plan JSON is exported privately for local verification. Do not require installing the utility on workers.
 - `inspect` previews grouping. `prepare` writes local copies and validates configuration; neither changes live infrastructure or remote state. Do not add automatic cutover or apply behavior without an explicit request.
 - `fetch` may authenticate and request a temporary download URL. It reads settings and state without changing stack settings, worker capacity or remote state.
+- Commands print human-readable summaries by default and accept per-command `--json` for automation. Keep both outputs accurate and exclude secrets.
+- `check-source` compares state lineage, serial and checksum against the preparation report. It does not verify the live freeze, configuration or runtime settings; those remain manual checks.
 - Preserve each original resource address, ID and attributes with exactly one owner across the resulting states. Keep the original parent lineage and distinct child lineages. Use native OpenTofu state operations on local copies.
 - Inherit the original worker pool and supported runtime settings. Missing worker-pool metadata must fail; never silently fall back to public workers.
 - Match the state writer's OpenTofu version and retain provider requirements and lock files. Do not install or upgrade tools implicitly.
 - Keep the source snapshot unchanged. Outputs must use new private directories, protect snapshots from Git, and refuse overwrites.
 - `verify-plan` must require actual plan JSON and reject existing-resource changes, deletes and replacements. Parent creation exceptions must match a validated preparation report exactly.
 - Local validation does not prove a live zero-change plan or successful cutover. Describe test evidence accurately.
+- Keep live cutover steps separate and manual, with an expected result before continuing. Commands in the canonical guide use the generated `SPLIT_STACK_ID` and `SPLIT_PREPARED` values without replacing them with defaults.
 
 ## Privacy and scope
 

@@ -11,9 +11,15 @@ go build -o admin-splitter ./cmd/admin-splitter
 ./admin-splitter --help
 ```
 
-Start with the [quickstart](docs/quickstart.md) for API credentials, state capture, version matching and preparation on your own workstation. The tool authenticates directly with Spacelift; no additional Spacelift CLI is needed.
+Run all `admin-splitter` commands locally. Start with the [quickstart](docs/quickstart.md) for API credentials, state capture, version matching and preparation on your own workstation. The tool authenticates directly with Spacelift; no additional Spacelift CLI is needed. Actual plans and applies run in Spacelift.
 
-Read the [cutover guide](docs/cutover.md) before scheduling the change. Publishing configuration and moving live backends remains an operator procedure. The build embeds this guide and writes it into each preparation as `CUTOVER.md`.
+Read the [cutover procedure](docs/cutover.md) before scheduling the change. Preparation produces a `CUTOVER.md` with your stack, worker pool, counts, child paths and state-file mount table. Each live change is a separate manual step with a check before continuing.
+
+Commands print a readable summary by default. Add `--json` to a command when scripting:
+
+```sh
+./admin-splitter inspect --state ./source/admin.tfstate --json
+```
 
 ## Preview and safety checks
 
@@ -24,6 +30,7 @@ There is no separate `--dry-run` flag. The preview workflow is `inspect` followe
 | `fetch` | Reads source settings and state into a new private directory |
 | `inspect` | Prints state counts and proposed groups without writing files |
 | `prepare` | Partitions local state copies, renders configuration and runs local initialization/validation |
+| `check-source` | Compares a fresh state snapshot with the one recorded by preparation |
 | `verify-plan` | Checks a saved plan JSON against the allowed changes |
 
 None of these commands uploads state, triggers runs or applies infrastructure changes. Preparation retains the original snapshot, refuses existing output directories and checks that every original resource has exactly one state owner. `--validate=false` skips configuration validation; it is not a dry-run switch and its output cannot authorize controller creation.
@@ -83,7 +90,7 @@ Only `groups` and root input `variables` are accepted as choices. Runtime settin
 prepared/
   .gitignore                   # excludes private snapshots and logs
   prepare.json                 # source identity, counts, pool, validation
-  CUTOVER.md                   # ordered live handoff and recovery
+  CUTOVER.md                   # your split details, mount table and manual steps
   repo/                        # publishable parent configuration
     _split/NAME/               # authoritative child configuration roots
   private/
@@ -100,18 +107,25 @@ After cutover, edit child paths listed in `prepare.json`. Original subdirectorie
 
 ## Plan checks and cutover
 
-```sh
-tofu show -json parent.tfplan > parent-plan.json
-./admin-splitter verify-plan --plan parent-plan.json \
-  --prepared prepared/prepare.json --allow-controller-create
+Open your generated `CUTOVER.md` and copy its setup block into your shell. The guide sets `SPLIT_STACK_ID` and `SPLIT_PREPARED` to your actual values. Recheck the source using a fresh snapshot:
 
-tofu show -json child.tfplan > child-plan.json
+```sh
+./admin-splitter check-source --state ./source-recheck/admin.tfstate \
+  --prepared "$SPLIT_PREPARED/prepare.json"
+```
+
+This checks state lineage, serial and checksum. Confirm the configuration, runtime settings and freeze manually. Arrange private export of actual run-plan JSON before cutover; the tool does not fetch run plans. Verify those exported files locally:
+
+```sh
+./admin-splitter verify-plan --plan parent-plan.json \
+  --prepared "$SPLIT_PREPARED/prepare.json" --allow-controller-create
+
 ./admin-splitter verify-plan --plan child-plan.json
 ```
 
-Only recorded controller addresses may be created. Existing changes, deletes and replacements fail. Child bootstrap plans require zero managed-resource changes. State JSON is rejected. Review output changes separately.
+The JSON must describe the actual saved plan; state JSON is rejected. Only recorded controller addresses may be created. Existing changes, deletes and replacements fail. Child bootstrap plans require zero managed-resource changes. Review output changes separately, then manually apply that same verified plan.
 
-Follow the [cutover guide](docs/cutover.md) to freeze runs, recheck the source snapshot, coordinate configuration/state replacement and temporarily mount child snapshots for import. A native tracked parent apply must publish dependency outputs after a task-based apply or state import. Bootstrap every child before testing conditional fan-out. No remote state writes or applies are performed by this utility.
+Follow your generated guide for the complete order, including separate state import, configuration publication, parent apply and child bootstrap steps. The utility does not upload state, trigger runs or apply changes.
 
 ## Supported input
 

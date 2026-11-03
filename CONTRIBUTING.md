@@ -32,3 +32,5 @@ These checks need network access to provider registries. They use generic fixtur
 ## Changes
 
 Keep customer identities, credentials, state snapshots and compiled executables out of Git. Use generic fixtures. Update the affected customer guide when commands or behavior change, and preserve the checks that every original resource has exactly one state owner after preparation.
+
+Keep human output useful for an operator and preserve per-command `--json` for scripts. The generated cutover guide adds split-specific details to the single canonical procedure in `docs/cutover.md`; do not duplicate that procedure in Go or automate its live account changes.

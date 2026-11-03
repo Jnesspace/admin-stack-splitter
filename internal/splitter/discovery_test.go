@@ -25,7 +25,7 @@ func TestPrepareAutomaticMigrationKitGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	var inspected bytes.Buffer
-	if err := Run([]string{"inspect", "--config", config, "--state", snapshot}, &inspected); err != nil {
+	if err := Run([]string{"inspect", "--json", "--config", config, "--state", snapshot}, &inspected); err != nil {
 		t.Fatal(err)
 	}
 	var preview splitPreview
@@ -41,7 +41,7 @@ func TestPrepareAutomaticMigrationKitGroups(t *testing.T) {
 	}
 	out := filepath.Join(t.TempDir(), "prepared")
 	var prepared bytes.Buffer
-	if err := Run([]string{"prepare", "--config", config, "--state", snapshot, "--layout", layoutPath, "--out", out, "--tool", tool, "--validate=false"}, &prepared); err != nil {
+	if err := Run([]string{"prepare", "--json", "--config", config, "--state", snapshot, "--layout", layoutPath, "--out", out, "--tool", tool, "--validate=false"}, &prepared); err != nil {
 		t.Fatal(err)
 	}
 	var report prepareResult

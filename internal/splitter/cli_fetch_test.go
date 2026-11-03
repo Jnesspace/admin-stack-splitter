@@ -102,7 +102,7 @@ func TestCustomerFetchInspectPrepareWorkflow(t *testing.T) {
 		t.Fatalf("fetch did not preserve the source snapshot: %v", err)
 	}
 	var inspected bytes.Buffer
-	if err := Run([]string{"inspect", "--config", config, "--state", filepath.Join(source, "admin.tfstate")}, &inspected); err != nil {
+	if err := Run([]string{"inspect", "--json", "--config", config, "--state", filepath.Join(source, "admin.tfstate")}, &inspected); err != nil {
 		t.Fatal(err)
 	}
 	var preview map[string]json.RawMessage
@@ -113,7 +113,7 @@ func TestCustomerFetchInspectPrepareWorkflow(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "prepared")
 			validate := os.Getenv("ADMIN_SPLITTER_VALIDATE_INTEGRATION") == "1"
-			args := []string{"prepare", "--config", config, "--state", filepath.Join(source, "admin.tfstate"), "--out", out, "--tool", tool, "--validate=" + strconv.FormatBool(validate)}
+			args := []string{"prepare", "--json", "--config", config, "--state", filepath.Join(source, "admin.tfstate"), "--out", out, "--tool", tool, "--validate=" + strconv.FormatBool(validate)}
 			if mode == "downloaded settings" {
 				t.Setenv("SPACELIFT_API_KEY_ID", "")
 				t.Setenv("SPACELIFT_API_KEY_SECRET", "")

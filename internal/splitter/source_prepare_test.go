@@ -48,7 +48,7 @@ func TestPrepareFromSourceStackSettings(t *testing.T) {
 				settingsPath := filepath.Join(t.TempDir(), "source-stack.json")
 				writeTest(t, settingsPath, string(settings))
 				var result bytes.Buffer
-				if err := Run([]string{"prepare", "--config", config, "--state", snapshot, "--source-stack", settingsPath, "--out", out, "--tool", tool, "--validate=false"}, &result); err != nil {
+				if err := Run([]string{"prepare", "--json", "--config", config, "--state", snapshot, "--source-stack", settingsPath, "--out", out, "--tool", tool, "--validate=false"}, &result); err != nil {
 					t.Fatal(err)
 				}
 				if err := json.Unmarshal(result.Bytes(), &report); err != nil {
