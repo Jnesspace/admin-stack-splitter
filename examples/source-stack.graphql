@@ -1,0 +1,13 @@
+query AdminSplitterSourceStack($id: ID!) {
+  stack(id: $id) {
+    id name space repository namespace branch provider projectRoot runnerImage
+    workerPool { id }
+    vcsIntegration { id isDefault }
+    roleBindings { role { id slug } space { id } }
+    vendorConfig {
+      __typename
+      ... on StackConfigVendorOpenTofu { version openTofuWorkflowTool: workflowTool }
+      ... on StackConfigVendorTerraform { version terraformWorkflowTool: workflowTool }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "source_stack_id": "existing-admin",
+  "space_id": "root",
+  "role_id": "SPACE_ADMIN_ROLE_ID",
+  "worker_pool_id": "SOURCE_ADMIN_PRIVATE_POOL_ID",
+  "runner_image": "",
+  "repository": "migration-admin",
+  "branch": "main",
+  "project_root": "",
+  "vcs_provider": "SPACELIFT",
+  "groups": [
+    {"name": "team_a", "module": "module.organization.module.team_a"},
+    {"name": "team_b", "module": "module.organization.module.team_b"}
+  ]
+}

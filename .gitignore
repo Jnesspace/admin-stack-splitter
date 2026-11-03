@@ -1,0 +1,14 @@
+/admin-splitter
+/admin-stack-splitter
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+*-plan.json
+/plan.json
+*.log
+.env
+.env.*
+!.env.example
+/private/
+.terraform/
