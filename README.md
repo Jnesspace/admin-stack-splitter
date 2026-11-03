@@ -15,6 +15,21 @@ Start with the [quickstart](docs/quickstart.md) for API credentials, state captu
 
 Read the [cutover guide](docs/cutover.md) before scheduling the change. Publishing configuration and moving live backends remains an operator procedure. The build embeds this guide and writes it into each preparation as `CUTOVER.md`.
 
+## Preview and safety checks
+
+There is no separate `--dry-run` flag. The preview workflow is `inspect` followed by `prepare`:
+
+| Command | Effect |
+| --- | --- |
+| `fetch` | Reads source settings and state into a new private directory |
+| `inspect` | Prints state counts and proposed groups without writing files |
+| `prepare` | Partitions local state copies, renders configuration and runs local initialization/validation |
+| `verify-plan` | Checks a saved plan JSON against the allowed changes |
+
+None of these commands uploads state, triggers runs or applies infrastructure changes. Preparation retains the original snapshot, refuses existing output directories and checks that every original resource has exactly one state owner. `--validate=false` skips configuration validation; it is not a dry-run switch and its output cannot authorize controller creation.
+
+A live OpenTofu plan still has to be produced on the correct stacks during cutover. Verify the actual plan that will be applied using the [cutover procedure](docs/cutover.md).
+
 ## Inherit the existing stack
 
 Set `SPACELIFT_API_KEY_ID`, `SPACELIFT_API_KEY_SECRET` and `SPACELIFT_API_KEY_ENDPOINT` as described in the quickstart, then fetch your source stack:
