@@ -1,6 +1,6 @@
 # Working on admin-stack-splitter
 
-Use Go 1.24 or later. Run commands from the repository root.
+Use Go 1.27.3 or later. Run commands from the repository root.
 
 ## Build
 
@@ -24,7 +24,7 @@ To also initialize providers and validate the generated configuration roots:
 
 ```sh
 ADMIN_SPLITTER_VALIDATE_INTEGRATION=1 go test \
-  -run 'TestCustomerFetchInspectPrepareWorkflow|TestPrepare.*NativeValidation' ./...
+  -run 'TestCustomerFetchInspectPrepareWorkflow|TestPrepare.*NativeValidation|TestPublishNativeValidation' ./...
 ```
 
 These checks need network access to provider registries. They use generic fixtures and local API test servers, with no live Spacelift credentials. They do not prove a live customer cutover or a zero-change plan against an account.
@@ -33,4 +33,4 @@ These checks need network access to provider registries. They use generic fixtur
 
 Keep customer identities, credentials, state snapshots and compiled executables out of Git. Use generic fixtures. Update the affected customer guide when commands or behavior change, and preserve the checks that every original resource has exactly one state owner after preparation.
 
-Keep human output useful for an operator and preserve per-command `--json` for scripts. The generated cutover guide adds split-specific details to the single canonical procedure in `docs/cutover.md`; do not duplicate that procedure in Go or automate its live account changes.
+Keep human output useful for an operator and preserve per-command `--json` for scripts. The generated cutover guide adds split-specific details to the single canonical procedure in `docs/cutover.md`; do not duplicate that procedure in Go and keep applies manual. `publish --confirm` is the explicit write boundary. Its HTTPS test server checks upload credentials, operation ordering, refusal paths and recovery records; native integration tests validate the import-based controller.

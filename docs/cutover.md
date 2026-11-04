@@ -1,4 +1,74 @@
-# Manual cutover
+# Publish through the API
+
+Use the setup block in your generated `CUTOVER.md` to set `SPLIT_STACK_ID` and `SPLIT_PREPARED`. Keep the exact applied source configuration and private backups. Run these commands locally with the same OpenTofu version used for preparation.
+
+## 1. Upload the prepared split
+
+Finish or discard pending source runs and tasks. The source can be disabled, but must be unlocked so the command can acquire its own lock. Use a user session or personal API key with state-import permissions; machine credentials cannot import managed state.
+
+```sh
+./admin-splitter publish --prepared "$SPLIT_PREPARED"
+./admin-splitter publish --prepared "$SPLIT_PREPARED" --confirm
+```
+
+The command rechecks source state and settings, pauses and locks the parent, creates a new Spacelift-managed repository, creates disabled children with their states already loaded, imports the reduced parent state, and points the existing parent at the new repository. It enables the parent, starts a proposed run and releases its lock. Automatic apply is off. No plan is applied.
+
+**Check:** the command prints a proposed-run link. All child stacks remain disabled. The parent retains its original ID and worker pool. No child-state mounts are needed; uploads support states up to 100 MiB. Original files under `prepared/repo/` remain unchanged; the actual published configuration is saved privately under `private/publish/published-repo/`.
+
+## 2. Review and apply the parent
+
+Open that proposed run in Spacelift and wait for planning to finish. The expected plan is:
+
+- One import for each child `spacelift_stack.admin_split_NAME` at the ID recorded in `private/publish/review.json`.
+- One new `spacelift_policy.admin_split_push`.
+- For each child, one new role attachment, policy attachment, stack dependency and dependency reference.
+- **Zero changes to existing resources**, including no updates, deletes or replacements.
+
+That is **N imports and 1 + 4 × N creates** for N children. Review output changes too. The proposed plan cannot apply. Start a tracked run of the same published commit in Spacelift, review that plan again, and confirm only when it has the same expected changes. The command sets the parent's current commit to this revision so a normal run uses the published configuration.
+
+For optional machine checking of privately exported saved-plan JSON:
+
+```sh
+./admin-splitter verify-plan --plan ./parent-plan.json \
+  --prepared "$SPLIT_PREPARED/private/publish/review.json" \
+  --allow-controller-create
+```
+
+This command requires the actual saved plan and checks its OpenTofu version, exact imports and exact creates. It rejects unexpected existing-resource changes. The tool does not download plan JSON or export it through run logs.
+
+**Check:** the parent apply succeeds, adopts the child stacks and creates the wiring. Its `split_NAME_payload` outputs are available. Keep children disabled until this check passes.
+
+## 3. Bootstrap the children
+
+Enable one child in Spacelift and start a run of the published commit, with automatic apply off. Review its plan: it must have **zero managed-resource changes**. Confirm any required output-only apply. Repeat for each child. If privately exported JSON is available:
+
+```sh
+./admin-splitter verify-plan --plan ./child-plan.json \
+  --prepared "$SPLIT_PREPARED/prepare.json"
+```
+
+**Check:** all children have the original pool, their imported resources and the parent dependency inputs. No existing resource was recreated. State import alone does not publish dependency outputs; the preceding parent apply is required.
+
+## 4. Check future edits
+
+In the new Spacelift repository, make a reviewed change confined to one `_split/NAME/` directory. Review and apply the parent run, then inspect the child runs selected by the changed dependency payload.
+
+**Check:** only the intended child is selected; unrelated children are skipped. Review that child's actual plan before applying. Continue editing the split repository. Restore any desired automation only after these checks pass.
+
+## If API publication fails
+
+The command records each pending/completed step in `private/publish/recovery.json`, with original parent settings and backups beside it. It attempts to disable the parent again and reports whether that pause succeeded. Children stay disabled. There is no automatic rollback or resume: a timed-out write may have succeeded remotely, so a second publication is refused.
+
+1. Verify in Spacelift that the parent and all recorded children are disabled. Finish or discard any pending runs. Keep the recovery directory private.
+2. Compare the journal with current repository, child stacks and parent state. A `pending` step has an uncertain outcome; inspect it before retrying anything.
+3. If restoring the original layout **before any parent or child apply**, remove only this publication's disabled child stacks without destroying their managed resources, restore the original parent state and original VCS/runtime settings together, then review a zero-change parent plan before restoring operation. Keep the new repository until recovery is verified.
+4. If any apply has occurred, compare current states and resource ownership before choosing a recovery path. Do not overwrite newer state with a backup or activate two owners of the same resources.
+
+The original state is `private/publish/original.tfstate`; original settings and completed IDs are in `recovery.json`. Use Spacelift's state-import UI/API while the parent is locked and idle. Resolve ownership uncertainty with your Spacelift contact before enabling runs.
+
+---
+
+# Manual alternative
 
 Use the generated `CUTOVER.md` in your preparation directory for this procedure. It includes your source stack, worker pool, resource counts, child paths and mount table. Copy its setup block into your Bash shell to set `SPLIT_STACK_ID` and `SPLIT_PREPARED`. Keep those values for every step below.
 
@@ -90,7 +160,7 @@ Back on your local machine, run:
 
 If your export process supplies the binary plan instead, convert it locally with `tofu show -json parent.tfplan > parent-plan.json`, using the matching OpenTofu version and required providers. Always give [`tofu show`](https://opentofu.org/docs/cli/commands/show/) the saved plan filename: state JSON is not a valid plan.
 
-**Check:** local verification succeeds. Existing managed resources have no changes; only the controller additions recorded by preparation are allowed. Review output changes separately.
+**Check:** local verification succeeds. The plan uses the OpenTofu version recorded by preparation, existing managed resources have no changes, and it creates exactly the controller additions recorded by preparation. Review output changes separately.
 
 ## 7. Apply that parent plan
 
@@ -117,7 +187,9 @@ umask 077 && tofu show -json spacelift.plan > /mnt/workspace/child-plan.json
 Transfer the JSON privately, then verify it on your local machine:
 
 ```sh
-./admin-splitter verify-plan --plan ./child-plan.json
+./admin-splitter verify-plan \
+  --plan ./child-plan.json \
+  --prepared "$SPLIT_PREPARED/prepare.json"
 ```
 
 Use the plan from the child currently under review. Keep each child's artifacts separate.

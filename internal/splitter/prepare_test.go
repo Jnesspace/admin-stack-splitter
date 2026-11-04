@@ -241,7 +241,7 @@ func TestRejectSensitiveTargetVariable(t *testing.T) {
 func TestVerifyPlans(t *testing.T) {
 	dir := t.TempDir()
 	prepared := filepath.Join(dir, "prepare.json")
-	if err := writeJSON(prepared, prepareResult{Complete: true, Validated: true, ControllerCreates: []string{"spacelift_stack.admin_split_a"}}); err != nil {
+	if err := writeJSON(prepared, prepareResult{Complete: true, Validated: true, ToolVersion: "1.11.4", ControllerCreates: []string{"spacelift_stack.admin_split_a"}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

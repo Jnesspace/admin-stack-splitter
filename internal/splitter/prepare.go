@@ -25,19 +25,21 @@ type preparedGroup struct {
 	Count  int
 }
 type prepareResult struct {
-	Complete          bool          `json:"complete"`
-	Validated         bool          `json:"validated"`
-	SourceStackID     string        `json:"source_stack_id"`
-	WorkerPoolID      string        `json:"worker_pool_id"`
-	RunnerImage       string        `json:"runner_image,omitempty"`
-	SourceSHA256      string        `json:"source_sha256"`
-	SourceLineage     string        `json:"source_lineage"`
-	SourceSerial      uint64        `json:"source_serial"`
-	ToolVersion       string        `json:"tool_version"`
-	SourceInstances   int           `json:"source_instances"`
-	ParentInstances   int           `json:"parent_instances"`
-	Groups            []groupResult `json:"groups"`
-	ControllerCreates []string      `json:"controller_creates"`
+	Complete          bool              `json:"complete"`
+	Validated         bool              `json:"validated"`
+	SourceStackID     string            `json:"source_stack_id"`
+	WorkerPoolID      string            `json:"worker_pool_id"`
+	RunnerImage       string            `json:"runner_image,omitempty"`
+	SourceSHA256      string            `json:"source_sha256"`
+	SourceLineage     string            `json:"source_lineage"`
+	SourceSerial      uint64            `json:"source_serial"`
+	ToolVersion       string            `json:"tool_version"`
+	SourceInstances   int               `json:"source_instances"`
+	ParentInstances   int               `json:"parent_instances"`
+	Groups            []groupResult     `json:"groups"`
+	ControllerCreates []string          `json:"controller_creates"`
+	ControllerImports map[string]string `json:"controller_imports,omitempty"`
+	Artifacts         map[string]string `json:"artifacts,omitempty"`
 }
 type groupResult struct {
 	Name            string `json:"name"`
@@ -208,6 +210,9 @@ func prepare(config, statePath, layoutPath, out, tool string, validate bool) (*p
 		return nil, err
 	}
 	private := filepath.Join(dest, "private")
+	if err := writeJSON(filepath.Join(private, "layout.json"), spec); err != nil {
+		return nil, err
+	}
 	if err := writePrivate(filepath.Join(private, "original.tfstate"), original); err != nil {
 		return nil, err
 	}
@@ -286,6 +291,10 @@ func prepare(config, statePath, layoutPath, out, tool string, validate bool) (*p
 		return nil, err
 	}
 	report.Complete = true
+	report.Artifacts, err = preparedArtifacts(dest, report)
+	if err != nil {
+		return nil, err
+	}
 	guide, err := renderCutover(dest, report)
 	if err != nil {
 		return nil, err

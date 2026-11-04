@@ -20,9 +20,10 @@ Commands:
   inspect      Show state counts or preview child groups
   prepare      Create and validate local configuration and state partitions
   check-source Check a fresh state snapshot against the prepared source
-  verify-plan  Check a saved plan before continuing the manual cutover
+  publish      Upload a prepared split and start its parent plan in Spacelift
+  verify-plan  Check a saved plan before applying it
 
-Start with docs/quickstart.md. Live cutover remains manual.
+Start with docs/quickstart.md. Publish changes remote state; plan approval remains manual.
 Use admin-splitter <command> --help for options; add --json for automation.
 
 Authentication: SPACELIFT_API_KEY_ID and SPACELIFT_API_KEY_SECRET,
@@ -196,6 +197,35 @@ func Run(args []string, out io.Writer) (err error) {
 			return json.NewEncoder(out).Encode(result)
 		}
 		return displaySourceCheck(out, result)
+	case "publish":
+		prepared := fs.String("prepared", "", "directory produced by prepare")
+		endpoint := fs.String("endpoint", os.Getenv("SPACELIFT_API_KEY_ENDPOINT"), "HTTPS Spacelift account URL")
+		tool := fs.String("tool", "tofu", "same OpenTofu binary used for prepare")
+		confirm := fs.Bool("confirm", false, "upload configuration and states, update the parent and start a proposed run; never apply")
+		if err := parseCommand(fs, args[1:]); err != nil {
+			return err
+		}
+		if *prepared == "" || *endpoint == "" {
+			return errors.New("publish requires --prepared and --endpoint (or SPACELIFT_API_KEY_ENDPOINT)")
+		}
+		if !jsonOutput {
+			if _, err := fmt.Fprintln(out, "Checking the prepared split and current source..."); err != nil {
+				return err
+			}
+		}
+		result, err := publish(context.Background(), *endpoint, *prepared, *tool, *confirm, credentialsFromEnvironment(), http.DefaultClient)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return json.NewEncoder(out).Encode(result)
+		}
+		if !result.Published {
+			_, err = fmt.Fprintf(out, "Ready to publish: keep parent %s, create %d disabled children, upload split state and configuration to a new Spacelift repository.\nRerun with --confirm to publish and start a proposed parent plan. No apply is performed.\n", result.ParentID, len(result.Children))
+			return err
+		}
+		_, err = fmt.Fprintf(out, "Published. Review the proposed parent plan: %s\nChildren remain disabled. Apply the parent controller changes before enabling them.\nRecovery and plan-check report: %s\n", result.RunURL, result.RecoveryDirectory)
+		return err
 	case "verify-plan":
 		path := fs.String("plan", "", "saved plan in JSON format")
 		prepared := fs.String("prepared", "", "prepare.json from this split")

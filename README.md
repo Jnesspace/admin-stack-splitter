@@ -1,8 +1,8 @@
 # Admin stack splitter
 
-Prepare a **migration-kit / liftoff admin stack** for splitting into a parent and smaller child admins. The tool reads generated configuration, a matching state snapshot, and the existing admin stack's settings. It partitions local copies while preserving resource addresses and attributes.
+Split a **migration-kit / liftoff admin stack** into a parent and smaller child admins, using local preparation and a one-time API publish. The tool reads generated configuration, a matching state snapshot, and the existing admin stack's settings. It partitions local copies while preserving resource addresses and attributes.
 
-Build from source with Go 1.24 or later:
+Build from source with Go 1.27.3 or later:
 
 ```sh
 git clone https://github.com/jnesspace/admin-stack-splitter.git
@@ -13,7 +13,7 @@ go build -o admin-splitter ./cmd/admin-splitter
 
 Run all `admin-splitter` commands locally. Start with the [quickstart](docs/quickstart.md) for API credentials, state capture, version matching and preparation on your own workstation. The tool authenticates directly with Spacelift; no additional Spacelift CLI is needed. Actual plans and applies run in Spacelift.
 
-Read the [cutover procedure](docs/cutover.md) before scheduling the change. Preparation produces a `CUTOVER.md` with your stack, worker pool, counts, child paths and state-file mount table. Each live change is a separate manual step with a check before continuing.
+Read the [cutover procedure](docs/cutover.md) before scheduling the change. Preparation produces a `CUTOVER.md` with your stack, worker pool, counts, child paths and state-file mount table. The default API path uploads the split in one local command, then leaves plan review and apply in Spacelift. The original manual procedure remains available.
 
 Commands print a readable summary by default. Add `--json` to a command when scripting:
 
@@ -23,7 +23,7 @@ Commands print a readable summary by default. Add `--json` to a command when scr
 
 ## Example: before and after
 
-This example splits 615 existing resources across five leaf spaces. Live changes happen during the manual cutover; `prepare` only creates local files.
+This example splits 615 existing resources across five leaf spaces. Live changes happen during publication and subsequent reviewed applies; `prepare` only creates local files.
 
 ### Before: one admin owns everything
 
@@ -73,9 +73,10 @@ There is no separate `--dry-run` flag. The preview workflow is `inspect` followe
 | `inspect` | Prints state counts and proposed groups without writing files |
 | `prepare` | Partitions local state copies, renders configuration and runs local initialization/validation |
 | `check-source` | Compares a fresh state snapshot with the one recorded by preparation |
+| `publish` | Previews by default; `--confirm` uploads split state/configuration and starts a proposed parent run |
 | `verify-plan` | Checks a saved plan JSON against the allowed changes |
 
-None of these commands uploads state, triggers runs or applies infrastructure changes. Preparation retains the original snapshot, refuses existing output directories and checks that every original resource has exactly one state owner. `--validate=false` skips configuration validation; it is not a dry-run switch and its output cannot authorize controller creation.
+Only `publish --confirm` uploads state, changes stack settings and starts a run. No command applies a plan. Preparation retains the original snapshot, refuses existing output directories and checks that every original resource has exactly one state owner. `--validate=false` skips configuration validation; it is not a dry-run switch and its output cannot authorize controller creation.
 
 A live OpenTofu plan still has to be produced on the correct stacks during cutover. Verify the actual plan that will be applied using the [cutover procedure](docs/cutover.md).
 
@@ -99,7 +100,7 @@ With the applied configuration in `./generated/` and the matching OpenTofu versi
   --out ./prepared
 ```
 
-Children inherit the original worker pool, runner image, repository, branch, VCS integration, project root, space and same-space administrator role. **A private source pool stays private.** Missing pool metadata is an error; an explicitly public source stays public. Preparation with saved inputs makes no account requests; initialization may download providers.
+Children inherit the original worker pool, runner image, project root, space and same-space administrator role. API publication puts the parent and children in a new Spacelift-managed repository on `main`; the manual path retains the original VCS settings. **A private source pool stays private.** Missing pool metadata is an error; an explicitly public source stays public. Preparation with saved inputs makes no account requests; initialization may download providers.
 
 If you already have a state snapshot, `prepare --stack YOUR_ADMIN_STACK_ID` can read the settings directly using the same credentials and endpoint. For account access through MCP, export [examples/source-stack.graphql](examples/source-stack.graphql) and supply it with `--source-stack`. MCP's `{"stack": ...}` and GraphQL's `{"data": {"stack": ...}}` envelopes are accepted.
 
@@ -132,7 +133,7 @@ Only `groups` and root input `variables` are accepted as choices. Runtime settin
 prepared/
   .gitignore                   # excludes private snapshots and logs
   prepare.json                 # source identity, counts, pool, validation
-  CUTOVER.md                   # your split details, mount table and manual steps
+  CUTOVER.md                   # your split details, API steps and manual alternative
   repo/                        # publishable parent configuration
     _split/NAME/               # authoritative child configuration roots
   private/
@@ -147,27 +148,36 @@ Native `tofu state mv` operates on local copies without backend configuration. C
 
 After cutover, edit child paths listed in `prepare.json`. Original subdirectories may remain as inactive copies. Do not run liftoff generation/publication over the split tree: it recreates the original single-admin wiring.
 
-## Plan checks and cutover
+## Publish through the API
 
-Open your generated `CUTOVER.md` and copy its setup block into your shell. The guide sets `SPLIT_STACK_ID` and `SPLIT_PREPARED` to your actual values. Recheck the source using a fresh snapshot:
+After preparation, run locally:
 
 ```sh
-./admin-splitter check-source --state ./source-recheck/admin.tfstate \
-  --prepared "$SPLIT_PREPARED/prepare.json"
+./admin-splitter publish --prepared ./prepared
+./admin-splitter publish --prepared ./prepared --confirm
 ```
 
-This checks state lineage, serial and checksum. Confirm the configuration, runtime settings and freeze manually. Arrange private export of actual run-plan JSON before cutover; the tool does not fetch run plans. Verify those exported files locally:
+The first command checks current state and settings. Children use the same standard OpenTofu workflow representation as migration-kit. The second takes a lock, creates a new Spacelift-managed repository, uploads each child's state while creating its disabled stack, imports the reduced parent state, points the existing parent at the new repository, and starts a **proposed** parent plan. It keeps the parent ID and worker pool, pins the original OpenTofu version and clears old sparse-checkout paths so the parent can hash all child files. Automatic apply is off, and no apply is performed.
+
+Open the returned run link. The parent plan must import the newly created child stacks and create only their controller wiring. Existing resources must have no changes. Review and apply that parent change in Spacelift, then enable and bootstrap each child. Follow the generated `CUTOVER.md` for the checks and expected resource counts.
+
+State goes directly to Spacelift's signed state-upload endpoint. No state mount or plan-export hook is needed for this path. The API path requires a user session or personal API key with Space admin access; machine credentials cannot import parent state. It rejects source hooks and context attachments because those dependencies are not copied to children.
+
+Publication saves its progress and original settings/state under `prepared/private/publish/`. It is a one-time operation: a second attempt is refused. A failed attempt requires reviewing that record before recovery; it never silently retries imports or rolls back ownership. Keep the private directory until the split has been verified.
+
+### Optional local plan checks
+
+`verify-plan` still accepts privately exported saved-plan JSON. It does not download plans. For an API publication, use its report, which records the exact child imports:
 
 ```sh
 ./admin-splitter verify-plan --plan parent-plan.json \
-  --prepared "$SPLIT_PREPARED/prepare.json" --allow-controller-create
+  --prepared ./prepared/private/publish/review.json --allow-controller-create
 
-./admin-splitter verify-plan --plan child-plan.json
+./admin-splitter verify-plan --plan child-plan.json \
+  --prepared ./prepared/prepare.json
 ```
 
-The JSON must describe the actual saved plan; state JSON is rejected. Only recorded controller addresses may be created. Existing changes, deletes and replacements fail. Child bootstrap plans require zero managed-resource changes. Review output changes separately, then manually apply that same verified plan.
-
-Follow your generated guide for the complete order, including separate state import, configuration publication, parent apply and child bootstrap steps. The utility does not upload state, trigger runs or apply changes.
+The JSON must describe the actual saved plan; state JSON is rejected. With `--prepared`, the OpenTofu version must match. The parent plan must contain exactly the recorded creates and imports, with no updates, deletes or replacements. Child bootstrap plans require zero managed-resource changes. Review output changes separately. For the manual cutover, use `prepare.json` for both commands.
 
 ## Supported input
 
@@ -177,11 +187,15 @@ Follow your generated guide for the complete order, including separate state imp
 - Local dependencies must stay inside each selected subtree. Escaping sibling references, cycles, symlinks and hidden dependency directories fail before partitioning.
 - Sensitive boundary inputs are refused. Only Terraform files and provider lock files are copied; backend/cloud blocks are removed.
 
+Publication also requires a working `stateDownloadUrl` API for the source. In the November 2026 sandbox test, that endpoint rejected a native OpenTofu source despite external access being enabled; the migration-kit OpenTofu workflow under the Terraform vendor could download state. A download failure stops publication before writes. The splitter never changes the source vendor to work around it.
+
 Source hooks, context attachments and cloud integrations are not cloned. Review customized runtime dependencies before handoff.
 
 ## Validation scope
 
-Tests use generic configuration derived from migration-kit output and synthetic state. They verify partition ownership, IDs, attributes, shared inputs, source runtime settings and native configuration validation. They do not prove a customer-account zero-change plan or remote cutover.
+Tests use generic configuration derived from migration-kit output and synthetic state. They verify partition ownership, IDs, attributes, shared inputs, source runtime settings and native configuration validation. They do not prove a customer-account zero-change plan.
+
+A disposable sandbox rehearsal on 2026-11-04 split five built-in data resources into one parent resource and two resources per child. The parent applied two child imports and nine controller additions with zero existing-resource changes. Both child bootstrap plans had zero changes. A Team A-only edit ran Team A and skipped Team B. A final fresh publication also passed; sandbox stacks, controller resources and repositories were removed afterward.
 
 ## Source layout
 

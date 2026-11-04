@@ -51,7 +51,7 @@ func displayPreparation(out io.Writer, result *prepareResult, directory string) 
 	displayGroups(&text, result.Groups)
 	fmt.Fprintf(&text, "\nConfiguration: %s\nPrivate state: %s\nReport: %s\n", filepath.Join(directory, "repo"), filepath.Join(directory, "private", "states"), filepath.Join(directory, "prepare.json"))
 	if result.Complete && result.Validated {
-		fmt.Fprintf(&text, "\nNext: open %s and follow the manual cutover steps.\n", filepath.Join(directory, "CUTOVER.md"))
+		fmt.Fprintf(&text, "\nNext: open %s for API publication and plan review.\n", filepath.Join(directory, "CUTOVER.md"))
 	} else {
 		text.WriteString("\nNext: prepare again into a new directory with validation enabled before cutover.\n")
 	}

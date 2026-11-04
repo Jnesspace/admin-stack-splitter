@@ -27,7 +27,7 @@ func renderCutover(preparedDir string, report *prepareResult) ([]byte, error) {
 	if !report.Complete || !report.Validated {
 		fmt.Fprintln(&out, "**STOP: this preparation has not passed configuration validation. Prepare again with validation enabled before performing any cutover step.**")
 	} else {
-		fmt.Fprintln(&out, "Local preparation and configuration validation passed. Follow each account step manually; live plans still need verification.")
+		fmt.Fprintln(&out, "Local preparation and configuration validation passed. Use the API publication steps below, then review the actual plans in Spacelift. The manual alternative is also included.")
 	}
 	fmt.Fprintln(&out)
 	fmt.Fprintln(&out, "Run the commands from your working directory containing `./admin-splitter`. Copy this setup block into that shell:")
@@ -53,13 +53,13 @@ func renderCutover(preparedDir string, report *prepareResult) ([]byte, error) {
 	fmt.Fprintf(&out, "| Parent state to import | %s |\n", markdownCell(filepath.Join(preparedDir, "private", "states", "parent.tfstate")))
 	fmt.Fprintf(&out, "| Configuration to publish | %s |\n", markdownCell(filepath.Join(preparedDir, "repo")))
 	fmt.Fprintf(&out, "| Original state backup | %s |\n\n", markdownCell(filepath.Join(preparedDir, "private", "original.tfstate")))
-	fmt.Fprintln(&out, "## Child state mounts")
+	fmt.Fprintln(&out, "## Child state mounts (manual alternative only)")
 	fmt.Fprintln(&out)
 	if oversized {
 		fmt.Fprintln(&out, "**Delivery needed before cutover:** at least one child snapshot exceeds 2 MB. Arrange approved private delivery to its exact runner path before importing parent state. See the state-delivery step below.")
 		fmt.Fprintln(&out)
 	}
-	fmt.Fprintln(&out, "For each file within the mount limit, create a write-only mounted file on the original parent with mode `600`. Larger files need private delivery as described below. The relative mount path determines the runner path `/mnt/workspace/<relative mount path>`.")
+	fmt.Fprintln(&out, "API publication uploads these snapshots directly and needs no mounts. For the manual alternative, create a write-only mounted file on the original parent with mode `600`. Larger files need private delivery as described below. The relative mount path determines the runner path `/mnt/workspace/<relative mount path>`.")
 	fmt.Fprintln(&out)
 	fmt.Fprintln(&out, "| Child stack name | Instances | State bytes | Local state file | Relative mount path |")
 	fmt.Fprintln(&out, "| --- | ---: | ---: | --- | --- |")

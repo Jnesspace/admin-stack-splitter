@@ -3,18 +3,30 @@ package splitter
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+type closedOutput struct{}
+
+func (closedOutput) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+func TestPublishStopsWhenProgressCannotBeWritten(t *testing.T) {
+	err := Run([]string{"publish", "--prepared", "missing-preparation", "--endpoint", "https://account.example", "--confirm"}, closedOutput{})
+	if !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("publish proceeded after its output failed: %v", err)
+	}
+}
+
 func TestNoArgumentsShowsUsefulHelp(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := Execute(nil, &out, &errOut); code != 0 || errOut.Len() != 0 {
 		t.Fatalf("opening help failed: exit %d, %s", code, errOut.String())
 	}
-	for _, expected := range []string{"Usage:", "fetch", "inspect", "prepare", "check-source", "verify-plan", "--json", "manual"} {
+	for _, expected := range []string{"Usage:", "fetch", "inspect", "prepare", "check-source", "publish", "verify-plan", "--json", "manual"} {
 		if !strings.Contains(out.String(), expected) {
 			t.Errorf("help omits %q", expected)
 		}
@@ -27,6 +39,7 @@ func TestCommandsRejectPositionalArgumentsBeforeReadingInputs(t *testing.T) {
 		{"inspect", "--state", "missing-state", "extra"},
 		{"prepare", "--state", "missing-state", "--config", "missing-config", "--source-stack", "missing-settings", "--out", "missing-out", "extra"},
 		{"check-source", "--state", "missing-state", "--prepared", "missing-report", "extra"},
+		{"publish", "--prepared", "missing-preparation", "extra"},
 		{"verify-plan", "--plan", "missing-plan", "extra"},
 	} {
 		t.Run(args[0], func(t *testing.T) {

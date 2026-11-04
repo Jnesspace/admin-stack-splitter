@@ -1,6 +1,6 @@
 # Prepare your admin stack split
 
-Run every `admin-splitter` command on your local machine. This guide builds the tool, captures your admin's inputs and prepares a split for review. Spacelift runs the actual plans and applies; each live change is a separate manual step in the generated cutover guide. Start with Go 1.24 or later on macOS or Linux and a Bash shell. No additional Spacelift CLI is required.
+Run every `admin-splitter` command on your local machine. This guide builds the tool, captures your admin's inputs and prepares a split for review. Spacelift runs the actual plans and applies; `publish --confirm` performs the state and configuration upload, then you review the plan in Spacelift. Start with Go 1.27.3 or later on macOS or Linux and a Bash shell. This patched Go version includes required TLS/HTTP security fixes. No additional Spacelift CLI is required.
 
 Complete each step before continuing. If a command fails, resolve its error first.
 
@@ -9,7 +9,7 @@ Complete each step before continuing. If a command fails, resolve its error firs
 ```sh
 git clone https://github.com/jnesspace/admin-stack-splitter.git
 cd admin-stack-splitter
-go build -o admin-splitter ./cmd/admin-splitter
+GOTOOLCHAIN=local go build -o admin-splitter ./cmd/admin-splitter
 ./admin-splitter --help
 ```
 
@@ -28,7 +28,7 @@ cd ../admin-split-work
 
 ## 2. Set your account and credentials
 
-Use a [secret-based Spacelift API key](https://docs.spacelift.io/integrations/api#secret-based-api-keys) with permission to read the admin's settings and state. Replace the account URL and stack ID below:
+For publication, use a user session or a personal [secret-based Spacelift API key](https://docs.spacelift.io/integrations/api#secret-based-api-keys) with Space admin access to the source space. Publication needs state import, stack/repository creation and run permissions. Machine API keys cannot import the parent state. Replace the account URL and stack ID below:
 
 ```sh
 export SPACELIFT_API_KEY_ENDPOINT='https://YOUR_ACCOUNT.app.spacelift.io'
@@ -52,7 +52,7 @@ An existing `SPACELIFT_API_TOKEN` can be used instead; leave both API-key variab
 
 ## 3. Freeze the admin and copy its applied configuration
 
-In Spacelift, prevent new automatic runs and applies on the original admin. Wait for executing runs to finish and discard outstanding unapplied plans. Keep this freeze through cutover.
+In Spacelift, prevent new automatic runs and applies on the original admin. Wait for executing runs to finish and discard outstanding unapplied plans. Keep the admin disabled while preparing. Leave it unlocked when you invoke `publish`, which takes its own lock and rechecks the state.
 
 Copy the exact applied migration-kit configuration into `./generated/`, preserving the complete module tree and provider lock file. Use the applied repository revision; do not rerun `liftoff generate`.
 
@@ -102,15 +102,22 @@ Preparation preserves the original worker pool and supported runtime settings, p
 
 **Check:** the summary reports that preparation and validation succeeded. Confirm the original worker pool, parent count and child counts. Do not skip validation for cutover.
 
-## 8. Open your generated cutover guide
+## 8. Publish and review
 
-Open `prepared/CUTOVER.md`. Its first section contains your stack ID, original worker pool, counts, child paths and the exact state-file mount table.
+```sh
+./admin-splitter publish --prepared ./prepared
+./admin-splitter publish --prepared ./prepared --confirm
+```
 
-Copy the setup block at the top of that guide into your shell. Then follow its manual steps in order: freeze and recheck, mount child states, import parent state, publish configuration, verify and apply the parent plan, bootstrap each child, and restore operation.
+The first command checks that the source still matches. The second uploads the configuration to a new Spacelift-managed repository, creates disabled children with their states, imports the smaller parent state, changes the original parent's repository and starts a proposed run. It does not apply anything. Use `--tool /path/to/tofu` here too if needed.
 
-**Check:** the source is still frozen and you understand the [supported inputs](../README.md#supported-input). Source hooks, context attachments and cloud integrations are not cloned; review custom runtime dependencies before proceeding.
+**Check:** open the returned run link. Follow the API section of `prepared/CUTOVER.md` to review the exact child imports and controller additions, apply the parent, then enable and bootstrap the children. A successful command means upload and run creation succeeded; the plan still needs to finish and pass review.
 
-Only `prepared/repo/` is publishable. Keep `source/`, `prepared/private/`, plan artifacts and credentials out of Git. If the source changes or the freeze is released, fetch fresh inputs and prepare again into a new directory.
+Keep source snapshots, `prepared/private/`, saved plans and credentials out of Git.
+
+Future edits happen in the new repository, including its `_split/` paths. Do not publish the old liftoff configuration over it. No mounted state files, export hooks or worker-installed splitter are needed.
+
+API publication currently rejects source hooks and attached contexts. If it fails after starting writes, retain `prepared/private/publish/recovery.json`, keep children disabled and follow the recovery section. Do not rerun blindly.
 
 ## Use existing snapshots instead of fetching
 
